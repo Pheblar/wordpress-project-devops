@@ -23,6 +23,8 @@ wordpress:
 
 mysql:
   replicaCount: 1
+  # При true перед стартом MySQL очищается каталог данных (для Minikube, где удаление PVC не всегда чистит hostPath)
+  wipeDataOnStart: false
   image:
     repository: mysql
     tag: "8.0"
@@ -67,7 +69,7 @@ phpConfig:
   postMaxSize: "64M"
   maxExecutionTime: "300"
 
-# ConfigMap: MySQL (подключается как файл)
+# ConfigMap: MySQL (подключается как файл). При лимите контейнера 512Mi буфер 256M часто даёт OOM — уменьшен.
 mysqlConfig:
   maxConnections: "100"
-  innodbBufferPoolSize: "256M"
+  innodbBufferPoolSize: "128M"

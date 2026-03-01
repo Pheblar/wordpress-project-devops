@@ -17,6 +17,15 @@ spec:
         {{- include "corp-blog.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: mysql
     spec:
+      {{- if .Values.mysql.wipeDataOnStart }}
+      initContainers:
+        - name: wipe-mysql-data
+          image: busybox:1.36
+          command: ["sh", "-c", "rm -rf /var/lib/mysql/* /var/lib/mysql/.[!.]* 2>/dev/null; echo wiped; exit 0"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+      {{- end }}
       containers:
         - name: mysql
           image: "{{ .Values.mysql.image.repository }}:{{ .Values.mysql.image.tag }}"
@@ -47,16 +56,28 @@ spec:
               subPath: custom.cnf
           resources:
             {{- toYaml .Values.mysql.resources | nindent 12 }}
+          # При первом запуске MySQL долго инициализирует данные; без startupProbe liveness убивает под (таймаут 1s по умолчанию).
+          startupProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "localhost"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 36
+            timeoutSeconds: 15
           livenessProbe:
             exec:
               command: ["mysqladmin", "ping", "-h", "localhost"]
-            initialDelaySeconds: 30
+            initialDelaySeconds: 10
             periodSeconds: 10
+            failureThreshold: 6
+            timeoutSeconds: 15
           readinessProbe:
             exec:
               command: ["mysqladmin", "ping", "-h", "localhost"]
             initialDelaySeconds: 5
             periodSeconds: 5
+            failureThreshold: 12
+            timeoutSeconds: 15
       volumes:
         - name: config
           configMap:

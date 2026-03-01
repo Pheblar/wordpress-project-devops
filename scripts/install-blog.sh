@@ -23,7 +23,7 @@ helm upgrade --install "$RELEASE" "$CHART_PATH" \
   -f "$CHART_PATH/values-dev.yaml" \
   --set mysqlRootPassword="${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}" \
   --set mysqlPassword="${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}" \
-  --wait --timeout 5m
+  --wait --timeout 10m
 
 echo "Установка завершена. Добавьте в hosts: $(minikube ip 2>/dev/null || echo '<INGRESS_IP>') blog.corp.local"
 echo "Откройте https://blog.corp.local"

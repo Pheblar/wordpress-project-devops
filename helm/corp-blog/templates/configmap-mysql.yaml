@@ -8,8 +8,10 @@ data:
   custom.cnf: |
     [mysqld]
     max_connections = {{ .Values.mysqlConfig.maxConnections | default "100" }}
-    innodb_buffer_pool_size = {{ .Values.mysqlConfig.innodbBufferPoolSize | default "256M" }}
+    innodb_buffer_pool_size = {{ .Values.mysqlConfig.innodbBufferPoolSize | default "128M" }}
     character-set-server = utf8mb4
     collation-server = utf8mb4_unicode_ci
+    # В контейнере с лимитом 512Mi иначе MySQL 8.0 часто падает при старте (OOM / performance_schema)
+    performance_schema = OFF
     [client]
     default-character-set = utf8mb4

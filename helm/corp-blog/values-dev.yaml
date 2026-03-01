@@ -16,3 +16,14 @@ wordpress:
 mysql:
   persistence:
     size: 3Gi
+  # MySQL 8.0 в контейнере при 512Mi часто падает (OOM); 768Mi + performance_schema=OFF обычно хватает
+  resources:
+    requests:
+      memory: "256Mi"
+    limits:
+      memory: "768Mi"
+
+# Конфиг MySQL для dev: меньше буфер, чтобы не убивало контейнер
+mysqlConfig:
+  innodbBufferPoolSize: "64M"
+  maxConnections: "50"

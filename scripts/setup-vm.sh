@@ -49,9 +49,11 @@ else
 fi
 
 echo "==> Запуск Minikube с 3 нодами (1 control-plane + 2 workers)..."
-# Используем docker driver; для bridge-сети можно привязать к 192.168.1.31 через --apiserver-ips
+# 8GB RAM, 8 CPU: 3 ноды по 2GB, по 2 CPU на ноду (можно задать MINIKUBE_MEMORY / MINIKUBE_CPUS)
+MINIKUBE_MEM="${MINIKUBE_MEMORY:-2048}"
+MINIKUBE_CPU="${MINIKUBE_CPUS:-2}"
 minikube delete --all 2>/dev/null || true
-minikube start --driver=docker --nodes=3 --cpus=2 --memory=4096
+minikube start --driver=docker --nodes=3 --cpus="${MINIKUBE_CPU}" --memory="${MINIKUBE_MEM}"
 
 echo "==> Включение addons: ingress, metrics-server (для HPA)..."
 minikube addons enable ingress

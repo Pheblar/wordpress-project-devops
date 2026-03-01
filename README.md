@@ -2,7 +2,7 @@
 
 Отказоустойчивый внутренний блог: Kubernetes, Helm, WordPress, MySQL, Prometheus/Grafana, TLS.
 
-**Сервер:** Ubuntu 24.04.4 LTS, IP 192.168.1.31 (bridge).
+**Сервер:** Ubuntu 24.04.4 LTS, IP 192.168.1.31 (bridge). Рекомендуется 8GB RAM, 8 CPU — скрипт поднимает 3 ноды по 2GB и 2 CPU.
 
 ---
 
@@ -40,6 +40,8 @@ kubectl get nodes
 kubectl get storageclass   # default StorageClass должен быть
 ```
 
+**Если Minikube не стартует:** память в `--memory` задаётся **на каждую ноду**. По умолчанию 3 ноды × 2GB (под 8GB VM). На слабых машинах уменьшите: `export MINIKUBE_MEMORY=1024` перед скриптом или запуск вручную с `--memory=1024`.
+
 ### 2. TLS-сертификат для blog.corp.local
 
 На сервере (или локально, затем скопировать файлы):
@@ -71,7 +73,7 @@ helm upgrade --install corp-blog ./helm/corp-blog \
   -f helm/corp-blog/values-dev.yaml \
   --set mysqlRootPassword="$MYSQL_ROOT_PASSWORD" \
   --set mysqlPassword="$MYSQL_PASSWORD" \
-  --wait --timeout 5m
+  --wait --timeout 10m
 ```
 
 **Prod** (3 реплики WordPress, HPA):
@@ -83,25 +85,73 @@ helm upgrade --install corp-blog ./helm/corp-blog \
   -f helm/corp-blog/values-prod.yaml \
   --set mysqlRootPassword="$MYSQL_ROOT_PASSWORD" \
   --set mysqlPassword="$MYSQL_PASSWORD" \
-  --wait --timeout 5m
+  --wait --timeout 10m
 ```
 
 Проверка: поды и сервисы в состоянии Running.
 
+**Если ошибка «context deadline exceeded»:** релиз ставится, но поды не успевают стать Ready за таймаут. Посмотрите причину:
+`kubectl get pods -n default -l app.kubernetes.io/instance=corp-blog` и `kubectl describe pod -n default -l app.kubernetes.io/component=mysql`. Часто MySQL долго инициализирует данные при первом запуске — просто повторите ту же команду `helm upgrade --install ...` (таймаут теперь 10 мин, пробы MySQL ослаблены).
+
+**Если MySQL в CrashLoopBackOff** (много рестартов): возможны повреждённые данные на диске, OOM или ошибка конфига. Сначала посмотрите логи контейнера:
+
+```bash
+./scripts/mysql-logs.sh default
+# или: kubectl logs corp-blog-mysql-0 -n default --previous
+```
+
+Чистый старт при **повреждённых данных** (в логах: «data files are corrupt or the database was not shut down cleanly»). В Minikube удаление PVC не всегда очищает hostPath — используйте **вариант 1**:
+
+```bash
+# Вариант 1 (рекомендуется): принудительная очистка тома перед стартом MySQL (без удаления PVC)
+helm upgrade --install corp-blog ./helm/corp-blog -n default \
+  -f helm/corp-blog/values.yaml -f helm/corp-blog/values-dev.yaml \
+  --set mysqlRootPassword="$MYSQL_ROOT_PASSWORD" --set mysqlPassword="$MYSQL_PASSWORD" \
+  --set mysql.wipeDataOnStart=true
+
+# Важно: StatefulSet не пересоздаёт под при смене только шаблона — удалите под, чтобы поднялся новый с init-контейнером (wipe).
+kubectl delete pod corp-blog-mysql-0 -n default
+
+# Дождаться Ready (можно снова helm upgrade с --wait или смотреть kubectl get pods -w)
+helm upgrade corp-blog ./helm/corp-blog -n default \
+  -f helm/corp-blog/values.yaml -f helm/corp-blog/values-dev.yaml \
+  --set mysqlRootPassword="$MYSQL_ROOT_PASSWORD" --set mysqlPassword="$MYSQL_PASSWORD" \
+  --set mysql.wipeDataOnStart=true --wait --timeout 10m
+
+# После успешного запуска отключите wipe, чтобы при следующих рестартах данные не стирались:
+helm upgrade corp-blog ./helm/corp-blog -n default \
+  -f helm/corp-blog/values.yaml -f helm/corp-blog/values-dev.yaml \
+  --set mysqlRootPassword="$MYSQL_ROOT_PASSWORD" --set mysqlPassword="$MYSQL_PASSWORD" \
+  --set mysql.wipeDataOnStart=false
+```
+
+```bash
+# Вариант 2: удалить PVC (скрипт или вручную), затем helm upgrade
+./scripts/mysql-reset-pvc.sh default
+helm upgrade --install corp-blog ./helm/corp-blog -n default \
+  -f helm/corp-blog/values.yaml -f helm/corp-blog/values-dev.yaml \
+  --set mysqlRootPassword="$MYSQL_ROOT_PASSWORD" --set mysqlPassword="$MYSQL_PASSWORD" \
+  --wait --timeout 10m
+```
+
 ### 4. Доступ по домену и HTTPS
 
-- **Minikube:** Ingress Controller получает трафик через внутренний IP Minikube. Чтобы заходить с вашего ПК по домену:
-  - Вариант А: на **вашем ПК** (Windows) добавить в `C:\Windows\System32\drivers\etc\hosts` строку:
-    - Сначала узнать IP: на VM выполнить `minikube ip`.
-    - Если браузер открываете с той же VM — использовать этот IP.
-    - Если браузер с домашнего ПК — нужен доступ к кластеру: либо проброс портов, либо настроить Ingress на 192.168.1.31 (см. ниже).
-  - Вариант Б (проще для теста с ПК): порт-форвард на VM:
-    - На VM: `kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 443:443 &`
-    - На ПК в hosts: `192.168.1.31 blog.corp.local`
-    - Открыть https://blog.corp.local (предупреждение о сертификате — принять).
+- **Minikube:** IP Minikube (192.168.49.2) доступен только с самой VM. Чтобы заходить **с вашего ПК** по домену blog.corp.local:
 
-- Или на ПК в **hosts** добавить (от имени администратора):
-  - `192.168.1.31 blog.corp.local` — если Ingress слушает на 192.168.1.31 (например, через tunnel или настройку сети).
+  1. **На VM** запустите проброс портов (порты 8443/8080, чтобы не требовать root):
+     ```bash
+     kubectl port-forward --address 0.0.0.0 -n ingress-nginx svc/ingress-nginx-controller 8443:443 8080:80
+     ```
+     Или: `bash scripts/port-forward-ingress.sh`. Оставьте команду в работе (Ctrl+C — остановить).
+
+  2. **На ПК** в `C:\Windows\System32\drivers\etc\hosts` добавьте (от имени администратора):
+     ```
+     192.168.1.31 blog.corp.local
+     ```
+
+  3. В браузере откройте **https://blog.corp.local:8443** (предупреждение о сертификате — принять).
+
+- Если браузер на **той же VM**: в hosts укажите `127.0.0.1 blog.corp.local`, запустите `kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8443:443 8080:80`, откройте https://blog.corp.local:8443.
 
 Скрипт-подсказка (на машине, где правите hosts):
 
@@ -110,7 +160,17 @@ helm upgrade --install corp-blog ./helm/corp-blog \
 sudo bash scripts/add-hosts.sh 192.168.1.31
 ```
 
-Откройте в браузере: **https://blog.corp.local**. Должно открыться с предупреждением о самоподписанном сертификате — это ожидаемо.
+Откройте в браузере: **https://blog.corp.local:8443**. Должно открыться с предупреждением о самоподписанном сертификате — это ожидаемо.
+
+**Если 502 Bad Gateway:** Ingress не получает ответ от WordPress. Часто WordPress поднялся до MySQL и не видит БД. Проверьте и перезапустите WordPress:
+
+```bash
+kubectl get pods -n default -l app.kubernetes.io/instance=corp-blog
+kubectl logs -n default -l app.kubernetes.io/component=wordpress --tail=50
+kubectl rollout restart deployment corp-blog-wordpress -n default
+```
+
+Подождите минуту, пока под перезапустится, и обновите страницу.
 
 ### 5. Мониторинг (Prometheus + Grafana)
 
@@ -120,11 +180,14 @@ bash monitoring/install-prometheus-grafana.sh monitoring
 
 Доступ к Grafana:
 
-```bash
-kubectl port-forward -n monitoring svc/kube-prometheus-grafana 3000:80
-```
+- **С той же VM:** `kubectl port-forward -n monitoring svc/kube-prometheus-grafana 3000:80` → в браузере http://localhost:3000
+- **С вашего ПК:** порт-форвард должен слушать на всех интерфейсах, иначе 192.168.1.31:3000 не ответит:
+  ```bash
+  kubectl port-forward --address 0.0.0.0 -n monitoring svc/kube-prometheus-grafana 3000:80
+  ```
+  В браузере на ПК: http://192.168.1.31:3000
 
-Браузер: http://localhost:3000 — логин **admin**, пароль **admin**.
+Логин **admin**, пароль **admin**.
 
 **Дашборд по CPU/RAM подов:** в Grafana: Dashboards → Import → ввести ID **6417** (Kubernetes / Views Pods) или **315** (Kubernetes Cluster Monitoring) → Load.
 
@@ -154,7 +217,16 @@ kubectl auth can-i get pods/log --as=system:serviceaccount:default:junior-dev
 
 **Сценарий А — HPA ("трафик пошёл"):**
 
-- Установить чарт в prod-режиме (HPA включён). Запустить нагрузку и смотреть рост подов:
+- Установить чарт в prod-режиме (HPA включён). Если до этого стоял **dev**, при переходе на prod нельзя менять размер тома MySQL (StatefulSet) — укажите текущий размер (в dev это 3Gi):
+
+```bash
+helm upgrade corp-blog ./helm/corp-blog -n default \
+  -f helm/corp-blog/values.yaml -f helm/corp-blog/values-prod.yaml \
+  --set mysqlRootPassword="$MYSQL_ROOT_PASSWORD" --set mysqlPassword="$MYSQL_PASSWORD" \
+  --set mysql.persistence.size=3Gi
+```
+
+Затем нагрузка и наблюдение за HPA:
 
 ```bash
 # В одном терминале
