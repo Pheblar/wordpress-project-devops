@@ -2,20 +2,52 @@
 
 Отказоустойчивый внутренний блог: Kubernetes, Helm, WordPress, MySQL, Prometheus/Grafana, TLS.
 
-**Сервер:** Ubuntu 24.04.4 LTS, IP 192.168.1.31 (bridge). Рекомендуется 8GB RAM, 8 CPU — скрипт поднимает 3 ноды по 2GB и 2 CPU.
+**Сервер:** Ubuntu 24.04.4 LTS (рекомендуется 8GB RAM, 8 CPU). IP VM в сети, например 192.168.1.31.
 
 ---
 
-## Быстрый старт (одна команда после подготовки)
+## Быстрый старт (свежая машина)
 
-После выполнения [Подготовка VM](#1-подготовка-vm) и создания TLS-сертификата:
+На новой Ubuntu скопируйте проект на сервер и выполните по порядку.
 
+**Шаг 1 — Кластер (один раз):**
 ```bash
-export MYSQL_ROOT_PASSWORD='SecureRootPass1' MYSQL_PASSWORD='WpUserPass1'
-bash scripts/install-blog.sh default
+cd ~/wordpress-project-devops   # или путь к проекту
+sudo bash scripts/setup-vm.sh
+```
+Проверка: `kubectl get nodes` (должно быть 3 ноды).
+
+**Шаг 2 — Сертификат и TLS Secret:**
+```bash
+bash scripts/gen-tls-cert.sh .
+kubectl create secret tls blog-corp-tls --cert=tls.crt --key=tls.key -n default
 ```
 
-Сайт: **https://blog.corp.local** (добавить в hosts на ПК, с которого заходите в браузер).
+**Шаг 3 — Установка блога (Helm):**
+```bash
+export MYSQL_ROOT_PASSWORD='YourRootPass' MYSQL_PASSWORD='WpUserPass'
+
+helm install corp-blog ./helm/corp-blog -n default \
+  -f helm/corp-blog/values.yaml \
+  -f helm/corp-blog/values-dev.yaml \
+  --set mysqlRootPassword="$MYSQL_ROOT_PASSWORD" \
+  --set mysqlPassword="$MYSQL_PASSWORD" \
+  --wait --timeout 10m
+```
+Дождитесь окончания (до 10 мин). Альтернатива: `bash scripts/install-blog.sh default` — то же самое плюс автосоздание TLS Secret из `tls.crt`/`tls.key`, если они лежат в корне проекта.
+
+**Шаг 4 — Доступ с браузера:**
+
+- На VM в отдельном терминале (оставить работать):
+  ```bash
+  kubectl port-forward --address 0.0.0.0 -n ingress-nginx svc/ingress-nginx-controller 8443:443 8080:80
+  ```
+- На ПК в `C:\Windows\System32\drivers\etc\hosts` добавить (от администратора): `192.168.1.31 blog.corp.local`
+- В браузере открыть: **https://blog.corp.local:8443** (предупреждение о сертификате — принять).
+
+**Шаг 5 — Первый заход:** в браузере пройти установку WordPress (язык, логин, пароль).
+
+Дальше: мониторинг, RBAC, краш-тесты — в [пошаговой инструкции](#пошаговая-инструкция) ниже.
 
 ---
 
