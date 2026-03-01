@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "corp-blog.fullname" . }}-wordpress
+  labels:
+    {{- include "corp-blog.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "corp-blog.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: wordpress

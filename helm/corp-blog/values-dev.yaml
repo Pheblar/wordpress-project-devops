@@ -1,0 +1,18 @@
+# Переключение в dev: helm install -f values.yaml -f values-dev.yaml ...
+environment: dev
+
+wordpress:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+  autoscaling:
+    enabled: false
+
+mysql:
+  persistence:
+    size: 3Gi

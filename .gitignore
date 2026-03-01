@@ -1,0 +1,4 @@
+values-secrets.yaml
+tls.key
+tls.crt
+*.pem

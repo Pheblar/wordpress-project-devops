@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "corp-blog.fullname" . }}-php-config
+  labels:
+    {{- include "corp-blog.labels" . | nindent 4 }}
+data:
+  custom-php.ini: |
+    memory_limit = {{ .Values.phpConfig.memoryLimit | default "256M" }}
+    upload_max_filesize = {{ .Values.phpConfig.uploadMaxFilesize | default "64M" }}
+    post_max_size = {{ .Values.phpConfig.postMaxSize | default "64M" }}
+    max_execution_time = {{ .Values.phpConfig.maxExecutionTime | default "300" }}

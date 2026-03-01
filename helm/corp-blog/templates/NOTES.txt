@@ -1,0 +1,13 @@
+Корпоративный блог развёрнут.
+
+1. Получить адрес Ingress (Minikube):
+   minikube service -n {{ .Release.Namespace }} --url ingress-nginx-controller 2>/dev/null || minikube ip
+
+2. Добавить в hosts (на машине, с которой заходите в браузер):
+   <INGRESS_IP> blog.corp.local
+
+3. Открыть в браузере: https://blog.corp.local
+   (Самоподписанный сертификат — принять предупреждение.)
+
+4. TLS Secret должен быть создан до установки или передан через --set-file.
+   Пример: kubectl create secret tls blog-corp-tls --cert=tls.crt --key=tls.key -n {{ .Release.Namespace }}

@@ -1,0 +1,73 @@
+# environment: dev | prod
+environment: dev
+
+wordpress:
+  replicaCount: 1
+  image:
+    repository: wordpress
+    tag: "6.4-php8.2-apache"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+  # HPA (в prod включается через values-prod.yaml)
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 50
+
+mysql:
+  replicaCount: 1
+  image:
+    repository: mysql
+    tag: "8.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"
+  persistence:
+    size: 5Gi
+    storageClass: ""  # default StorageClass
+
+ingress:
+  enabled: true
+  host: blog.corp.local
+  tls:
+    enabled: true
+    secretName: blog-corp-tls
+  # IP для Minikube: minikube ip; для реального Ingress на VM — 192.168.1.31
+  className: nginx
+
+# Секреты — НЕ хардкодить; передавать через --set или отдельный values
+# helm install -f values.yaml -f secrets.yaml ...
+# В secrets.yaml (не коммитить!): mysqlRootPassword, mysqlPassword, ...
+mysqlRootPassword: ""   # обязательно задать
+mysqlPassword: ""        # пароль wp_user
+mysqlDatabase: wordpress
+mysqlUser: wp_user
+
+# PDB для WordPress
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# ConfigMap: PHP (подключается как файл в WordPress)
+phpConfig:
+  memoryLimit: "256M"
+  uploadMaxFilesize: "64M"
+  postMaxSize: "64M"
+  maxExecutionTime: "300"
+
+# ConfigMap: MySQL (подключается как файл)
+mysqlConfig:
+  maxConnections: "100"
+  innodbBufferPoolSize: "256M"

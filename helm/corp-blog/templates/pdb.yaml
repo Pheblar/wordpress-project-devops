@@ -1,0 +1,14 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "corp-blog.fullname" . }}-wordpress
+  labels:
+    {{- include "corp-blog.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "corp-blog.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: wordpress
+{{- end }}

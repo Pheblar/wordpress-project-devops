@@ -1,0 +1,22 @@
+{{- if .Values.wordpress.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "corp-blog.fullname" . }}-wordpress
+  labels:
+    {{- include "corp-blog.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "corp-blog.fullname" . }}-wordpress
+  minReplicas: {{ .Values.wordpress.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.wordpress.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.wordpress.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "corp-blog.fullname" . }}-wordpress
+  labels:
+    {{- include "corp-blog.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.wordpress.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "corp-blog.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: wordpress
+  template:
+    metadata:
+      labels:
+        {{- include "corp-blog.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: "{{ .Values.wordpress.image.repository }}:{{ .Values.wordpress.image.tag }}"
+          imagePullPolicy: {{ .Values.wordpress.image.pullPolicy }}
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: {{ include "corp-blog.fullname" . }}-mysql:3306
+            - name: WORDPRESS_DB_USER
+              value: {{ .Values.mysqlUser | quote }}
+            - name: WORDPRESS_DB_NAME
+              value: {{ .Values.mysqlDatabase | quote }}
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "corp-blog.fullname" . }}-wordpress
+                  key: wordpress-db-password
+          ports:
+            - containerPort: 80
+              name: http
+          volumeMounts:
+            - name: php-config
+              mountPath: /usr/local/etc/php/conf.d/99-custom.ini
+              subPath: custom-php.ini
+          resources:
+            {{- toYaml .Values.wordpress.resources | nindent 12 }}
+      volumes:
+        - name: php-config
+          configMap:
+            name: {{ include "corp-blog.fullname" . }}-php-config

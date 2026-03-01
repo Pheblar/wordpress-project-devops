@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "corp-blog.fullname" . }}-mysql
+  labels:
+    {{- include "corp-blog.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3306
+      targetPort: mysql
+      protocol: TCP
+      name: mysql
+  selector:
+    {{- include "corp-blog.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mysql
+---
+# Headless for StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "corp-blog.fullname" . }}-mysql-headless
+  labels:
+    {{- include "corp-blog.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - port: 3306
+      targetPort: mysql
+      protocol: TCP
+      name: mysql
+  selector:
+    {{- include "corp-blog.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mysql

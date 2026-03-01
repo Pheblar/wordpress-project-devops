@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "corp-blog.fullname" . }}-mysql-config
+  labels:
+    {{- include "corp-blog.labels" . | nindent 4 }}
+data:
+  custom.cnf: |
+    [mysqld]
+    max_connections = {{ .Values.mysqlConfig.maxConnections | default "100" }}
+    innodb_buffer_pool_size = {{ .Values.mysqlConfig.innodbBufferPoolSize | default "256M" }}
+    character-set-server = utf8mb4
+    collation-server = utf8mb4_unicode_ci
+    [client]
+    default-character-set = utf8mb4
